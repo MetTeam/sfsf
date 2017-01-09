@@ -33,7 +33,8 @@ namespace ShadowsocksFreeServerFetcher
             // 需要指定 ss 配置文件的地址才能工作
             ReadOrPromptShadowsocksFilename();
 
-            TrayIcon = new NotifyIcon() {
+            TrayIcon = new NotifyIcon()
+            {
                 Icon = Resources.AppIcon,
                 Text = Resources.ProgramTitle,
                 ContextMenu = new ContextMenu(new MenuItem[] {
@@ -105,13 +106,15 @@ namespace ShadowsocksFreeServerFetcher
             ServerInfoFetcherCollection = new List<ServerInfoFetcher>();
 
             List<KeyValuePair<string, Type>> candidateFetcher = new List<KeyValuePair<string, Type>>();
-            if (true) {
+            if (true)
+            {
                 IEnumerable<Type> infoFetcherTypes =
                     from assembly in AppDomain.CurrentDomain.GetAssemblies()
                     from type in assembly.GetTypes()
                     where typeof(ServerInfoFetcher).IsAssignableFrom(type)
                     select type;
-                foreach (Type infoFetcherType in infoFetcherTypes) {
+                foreach (Type infoFetcherType in infoFetcherTypes)
+                {
                     ServerInfoFetcherAttribute[] describer = (ServerInfoFetcherAttribute[])infoFetcherType.GetCustomAttributes(typeof(ServerInfoFetcherAttribute), true);
                     if (describer.Length != 1 || (describer[0].Name ?? "") == "") continue;
                     string name = describer[0].Name;
@@ -188,6 +191,7 @@ namespace ShadowsocksFreeServerFetcher
             {
                 currentSettings = JObject.Parse(File.ReadAllText(OutputFileName()));
                 str = ((object)currentSettings).ToString();
+
             }
             catch (Exception)
             {
@@ -205,7 +209,38 @@ namespace ShadowsocksFreeServerFetcher
                     newIndex = BestMatchServer(serverInfoCollection, oldServer);
                 }
             }
-            catch (Exception) {}
+            catch (Exception) { }
+
+            var hasSuccessCount = 0;
+            List<ServerInfo> serverInfos = new List<ServerInfo>();
+            ServerInfo[] oldServers = ((JArray)currentSettings["configs"]).ToObject<ServerInfo[]>();
+
+            if (!(oldServers == null || oldServers.Length == 0))
+            {
+                foreach (var serverInfo in oldServers)
+                {
+                    var hasServerInfo = serverInfoCollection
+                            .Where(s =>
+                                s.Host == serverInfo.Host &&
+                                s.Method == serverInfo.Method &&
+                                s.Port == serverInfo.Port)
+                            .SingleOrDefault<ServerInfo>();
+
+                    if (hasServerInfo == null)
+                    {
+                        serverInfos.Add(serverInfo);
+                        continue;
+                    }
+
+                    // 如果新增在已有的配置中无法查到，则表示需要更新配置文件
+                    if (hasServerInfo.Password != serverInfo.Password)
+                    {
+                        hasSuccessCount++;
+                    }
+                }
+            }
+
+            serverInfoCollection = serverInfoCollection.Union(serverInfos.ToArray<ServerInfo>()).ToArray();
 
             // 更新配置文件
             currentSettings["configs"] = (JToken)JArray.FromObject((object)serverInfoCollection);
@@ -217,11 +252,16 @@ namespace ShadowsocksFreeServerFetcher
                 currentSettings["strategy"] = "com.shadowsocks.strategy.ha";
             }
 
-            // 检查要输出的配置文件是否和原来完全一致，如果完全一致那么就不要打扰
-            string contents = ((object)currentSettings).ToString();
-            if (contents == str) return 0;
-            
-            File.WriteAllText(OutputFileName(), contents);
+            if (hasSuccessCount > 0)
+            {
+                string contents = ((object)currentSettings).ToString();
+                File.WriteAllText(OutputFileName(), contents);
+            }
+            else
+            {
+                return 0;
+            }
+
             return serverInfoCollection.Length;
         }
 
@@ -416,7 +456,8 @@ namespace ShadowsocksFreeServerFetcher
 
         private string ReadOrPromptShadowsocksFilename()
         {
-            while (true) {
+            while (true)
+            {
                 string filename = GetShadowsocksFilename();
                 if ((filename ?? "") != "") return filename;
                 DialogResult msgboxResult = MessageBox.Show(
